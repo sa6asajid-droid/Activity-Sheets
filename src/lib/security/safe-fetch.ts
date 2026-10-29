@@ -163,7 +163,7 @@ function requestPinned(url: URL, address: string, family: 4 | 6, opts: { maxByte
 export function htmlToText(html: string): { title: string; text: string } {
   const title = (html.match(/<title[^>]*>([\s\S]*?)<\/title>/i)?.[1] ?? "").replace(/\s+/g, " ").trim();
   const text = html
-    .replace(/<(script|style|noscript|template|svg|iframe|object)[\s\S]*?<\/\1>/gi, " ")
+    .replace(/<(script|style|noscript|template|svg|iframe|object|title|head)[\s\S]*?<\/\1>/gi, " ")
     .replace(/<!--[\s\S]*?-->/g, " ")
     .replace(/<\/(p|div|h[1-6]|li|tr|br|section|article)>/gi, "\n")
     .replace(/<br\s*\/?>/gi, "\n")

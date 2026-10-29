@@ -58,7 +58,7 @@ let fontCache: Record<string, string> | null = null;
 export function inlineFontSrc(): (file: string) => string {
   if (!fontCache) {
     fontCache = {};
-    const dir = path.join(process.cwd(), "public", "fonts");
+    const dir = path.join(/* turbopackIgnore: true */ process.cwd(), "public", "fonts");
     for (const f of FONT_FILES) {
       try {
         fontCache[f.file] = `data:font/woff2;base64,${fs.readFileSync(path.join(dir, f.file)).toString("base64")}`;

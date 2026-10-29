@@ -38,7 +38,7 @@ export interface StageModel {
 }
 
 export function getConfig() {
-  const dataDir = path.resolve(process.env.CS_DATA_DIR || path.join(process.cwd(), "data"));
+  const dataDir = path.resolve(process.env.CS_DATA_DIR || path.join(/* turbopackIgnore: true */ process.cwd(), "data"));
   const model = process.env.CS_MODEL || "claude-opus-5-5";
   const provider = (process.env.CS_TEXT_PROVIDER || (process.env.ANTHROPIC_API_KEY ? "anthropic" : "none")) as "anthropic" | "mock" | "none";
   const search = (process.env.CS_SEARCH_PROVIDER || (provider === "anthropic" ? "anthropic-web-search" : "none")) as "anthropic-web-search" | "mock" | "none";

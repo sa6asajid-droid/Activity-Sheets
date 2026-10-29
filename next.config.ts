@@ -7,6 +7,11 @@ const nextConfig: NextConfig = {
   async headers() {
     return [
       {
+        // The sandboxed preview iframe has an opaque origin; fonts need CORS.
+        source: "/fonts/:file*",
+        headers: [{ key: "Access-Control-Allow-Origin", value: "*" }],
+      },
+      {
         source: "/:path*",
         headers: [
           { key: "X-Content-Type-Options", value: "nosniff" },

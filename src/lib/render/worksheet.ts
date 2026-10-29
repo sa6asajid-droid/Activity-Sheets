@@ -26,6 +26,9 @@ export interface RenderOptions {
   /** Printed on educator pages when the revision is not approved. */
   draftLabel?: string;
   revisionLabel?: string;
+  /** Editor preview only: restore scroll position and scale. */
+  initialScroll?: number;
+  zoom?: number;
 }
 
 const esc = escapeHtml;
@@ -384,7 +387,7 @@ export function renderWorksheetHtml(doc: WorksheetDocument, opts: RenderOptions)
   const lang = esc(doc.audience.regionalConventions.spelling || "en");
   const bodyCls = [`fam-${doc.layout.visualFamily}`, opts.interactive ? "interactive" : ""].join(" ");
   return `<!doctype html><html lang="${lang}"><head><meta charset="utf-8"><title>${esc(doc.title || doc.question)}</title><meta name="generator" content="Curiosity Studio">
-<style>${css}</style></head><body class="${bodyCls}"><div class="doc" data-variant="${opts.variant}">${pagesHtml}</div><script>${PAGINATE_SCRIPT}</script>${opts.interactive ? INTERACTIVE_SCRIPT : ""}</body></html>`;
+<style>${css}${opts.zoom && opts.zoom !== 1 ? `.doc{zoom:${opts.zoom};}` : ""}</style></head><body class="${bodyCls}"><div class="doc" data-variant="${opts.variant}">${pagesHtml}</div><script>${PAGINATE_SCRIPT}</script>${opts.interactive ? INTERACTIVE_SCRIPT.replace("__INIT_SCROLL__", String(Math.max(0, Math.round(opts.initialScroll ?? 0)))) : ""}</body></html>`;
 }
 
 /**
@@ -415,4 +418,6 @@ if(document.fonts&&document.fonts.ready){document.fonts.ready.then(run);}else{wi
 const INTERACTIVE_SCRIPT = `<script>
 document.addEventListener('click',function(e){var t=e.target.closest('[data-section]');var el=e.target.closest('[data-el][data-editable]');var d=e.target.closest('[data-diagram]');
 parent.postMessage({type:'cs-select',section:t?t.getAttribute('data-section'):null,element:el?el.getAttribute('data-el'):null,diagram:d?d.getAttribute('data-diagram'):null},'*');});
+var st=null;window.addEventListener('scroll',function(){clearTimeout(st);st=setTimeout(function(){parent.postMessage({type:'cs-scroll',y:window.scrollY},'*');},120);});
+window.addEventListener('load',function(){window.scrollTo(0,__INIT_SCROLL__);});
 </script>`;

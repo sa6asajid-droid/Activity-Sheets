@@ -9,11 +9,19 @@ import { fractionsEquivalent } from "./diagrams/checks";
 
 /** Tiny recursive-descent evaluator for + - * / and parentheses. No eval(). */
 export function evaluateArithmetic(expr: string): number {
-  const src = expr.replace(/\s+/g, "");
-  if (!/^[0-9+\-*/().]+$/.test(src)) throw new Error("Unsupported characters in expression");
+  if (!/^[0-9+\-*/(). ]+$/.test(expr)) throw new Error("Unsupported characters in expression");
+  // Spaces may separate tokens but never join digits ("2 2" is an error, not 22).
+  const src = expr.trim();
   let i = 0;
-  const peek = () => src[i];
+  const skip = () => {
+    while (src[i] === " ") i++;
+  };
+  const peek = () => {
+    skip();
+    return src[i];
+  };
   function number(): number {
+    skip();
     const start = i;
     while (i < src.length && /[0-9.]/.test(src[i])) i++;
     if (start === i) throw new Error(`Expected a number at position ${i}`);
@@ -55,6 +63,7 @@ export function evaluateArithmetic(expr: string): number {
     return v;
   }
   const result = expression();
+  skip();
   if (i !== src.length) throw new Error(`Unexpected "${src[i]}" at position ${i}`);
   return result;
 }

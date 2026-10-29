@@ -10,6 +10,7 @@
  */
 import { z } from "zod";
 import { DiagramSpecSchema } from "./diagram";
+import { migrateDocument } from "./migrate";
 
 export const SCHEMA_VERSION = 2;
 
@@ -540,7 +541,13 @@ export type ValidationResult =
   | { ok: false; errors: string[] };
 
 export function validateDocument(input: unknown): ValidationResult {
-  const parsed = WorksheetDocumentSchema.safeParse(input);
+  let migrated: unknown;
+  try {
+    migrated = migrateDocument(input);
+  } catch (e) {
+    return { ok: false, errors: [(e as Error).message] };
+  }
+  const parsed = WorksheetDocumentSchema.safeParse(migrated);
   if (!parsed.success) {
     return {
       ok: false,
