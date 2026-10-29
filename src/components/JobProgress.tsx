@@ -34,6 +34,9 @@ export function JobProgress({ jobId, onFinished }: { jobId: string; onFinished: 
   const [extra, setExtra] = useState(1);
   const [busy, setBusy] = useState(false);
   const finished = useRef(false);
+  // Keep the latest callback without restarting the polling loop on every render.
+  const onFinishedRef = useRef(onFinished);
+  onFinishedRef.current = onFinished;
 
   useEffect(() => {
     let stop = false;
@@ -46,7 +49,7 @@ export function JobProgress({ jobId, onFinished }: { jobId: string; onFinished: 
         const active = r.job.status === "running" || r.job.status === "queued";
         if (!active && !finished.current && (r.job.status === "succeeded" || r.job.status === "failed" || r.job.status === "cancelled")) {
           finished.current = true;
-          onFinished(r.job.status);
+          onFinishedRef.current(r.job.status);
         }
         if (active) {
           finished.current = false;
@@ -61,7 +64,7 @@ export function JobProgress({ jobId, onFinished }: { jobId: string; onFinished: 
       stop = true;
       clearTimeout(t);
     };
-  }, [jobId, onFinished, busy]);
+  }, [jobId, busy]);
 
   async function act(action: string, extraBody: Record<string, unknown> = {}) {
     setBusy(true);

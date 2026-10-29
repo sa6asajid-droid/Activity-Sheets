@@ -14,7 +14,7 @@ import * as svc from "@/lib/server/services";
 import { exportProject, compileWorkbook, ExportRefusedError } from "@/lib/export/exporter";
 import { browserLayoutEngine, closeBrowser } from "@/lib/render/browser";
 import { addPastedSource } from "@/lib/sources/user-sources";
-import { validateDocument, type Claim } from "@/lib/schema/document";
+import { validateDocument, type Claim, type WorksheetDocument } from "@/lib/schema/document";
 import { seedSamples } from "@/lib/samples";
 import type { PlanOutT } from "@/lib/pipeline/llm-schemas";
 import { PDFDocument } from "pdf-lib";
@@ -280,7 +280,7 @@ describe("exports (real browser)", () => {
 
   it("changes page size and still exports without clipping", async () => {
     const draft = d.store.getDraft(projectId)!;
-    let doc = { ...draft.doc, layout: { ...draft.doc.layout, pageSize: "a4" as const, fontScale: "large" as const } };
+    let doc: WorksheetDocument = { ...draft.doc, layout: { ...draft.doc.layout, pageSize: "a4", fontScale: "large" } };
     doc = await browserLayoutEngine.autoPaginate(doc);
     svc.saveDraft(d.store, projectId, doc, draft.version);
     const out = await exportProject(d.store, projectId, { kind: "educator-pdf", allowDraft: true });

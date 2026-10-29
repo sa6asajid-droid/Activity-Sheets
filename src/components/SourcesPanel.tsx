@@ -117,11 +117,13 @@ export function SourcesPanel({ project, onChange, onStartPlan, demoOnly }: { pro
             </label>
           )}
           {mode === "url" && (
-            <label className="text-sm font-semibold flex flex-col gap-1">
-              URL
-              <input className="field-input font-normal" type="url" value={url} onChange={(e) => setUrl(e.target.value)} required placeholder="https://" />
-              <span className="text-xs font-normal text-muted">Only public http(s) pages; private and local addresses are blocked.</span>
-            </label>
+            <div className="flex flex-col gap-1">
+              <label className="text-sm font-semibold flex flex-col gap-1">
+                URL
+                <input className="field-input font-normal" type="url" value={url} onChange={(e) => setUrl(e.target.value)} required placeholder="https://" aria-describedby="url-hint" />
+              </label>
+              <span id="url-hint" className="text-xs text-muted">Only public http(s) pages; private and local addresses are blocked.</span>
+            </div>
           )}
           {mode === "upload" && (
             <label className="text-sm font-semibold flex flex-col gap-1">

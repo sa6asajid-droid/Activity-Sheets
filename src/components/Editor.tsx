@@ -43,7 +43,7 @@ function sectionLabel(doc: WorksheetDocument, id: string, nums: Map<string, numb
   return stripInline(s.heading || s.body).slice(0, 60) || KIND_LABEL[s.kind];
 }
 
-export function Editor({ projectId, state, regenerate, reload, canGenerate }: { projectId: string; state: DocState; regenerate: (JobSummary & { proposal: unknown }) | null; reload: () => Promise<void>; canGenerate: boolean }) {
+export function Editor({ projectId, state, regenerate, reload, reloadDocument, canGenerate }: { projectId: string; state: DocState; regenerate: (JobSummary & { proposal: unknown }) | null; reload: () => Promise<void>; reloadDocument: () => Promise<void>; canGenerate: boolean }) {
   const doc = state.doc!;
   const { setDoc, setMeasured } = state;
   const [selected, setSelected] = useState<string | null>(null);
@@ -187,7 +187,7 @@ export function Editor({ projectId, state, regenerate, reload, canGenerate }: { 
           The content uses more pages than the format allows. Options: add a page (change the format in Document settings), shorten selected text, hide an optional section, or regenerate a section shorter. Text is never shrunk below the minimum size.
         </p>
       )}
-      {proposal ? <RegenerateProposal projectId={projectId} jobId={regenerate!.id} proposal={proposal as never} onDone={reload} /> : null}
+      {proposal ? <RegenerateProposal projectId={projectId} jobId={regenerate!.id} proposal={proposal as never} beforeDecide={state.flush} onDone={reloadDocument} /> : null}
 
       <div className="grid gap-3 xl:grid-cols-[260px_minmax(0,1fr)_380px] lg:grid-cols-[240px_minmax(0,1fr)]">
         <nav aria-label="Document structure" className="bg-card border border-line rounded-lg p-2 max-h-[78vh] overflow-auto text-sm">
@@ -258,7 +258,7 @@ export function Editor({ projectId, state, regenerate, reload, canGenerate }: { 
         </div>
 
         <div className="lg:col-span-2 xl:col-span-1 max-h-[78vh] overflow-auto">
-          <Inspector projectId={projectId} doc={doc} setDoc={setDoc} selected={selected} selectedLabel={selectedLabel} onSelect={setSelected} canGenerate={canGenerate} onRegenerated={reload} />
+          <Inspector projectId={projectId} doc={doc} setDoc={setDoc} selected={selected} selectedLabel={selectedLabel} onSelect={setSelected} canGenerate={canGenerate} onRegenerated={async () => { await state.flush(); await reload(); }} />
         </div>
       </div>
     </div>

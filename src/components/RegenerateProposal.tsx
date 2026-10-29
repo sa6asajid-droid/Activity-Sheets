@@ -18,13 +18,15 @@ function summarize(part: RegenerationProposal["before"]) {
 }
 
 /** Side-by-side proposal with its dependencies; nothing changes until accepted. */
-export function RegenerateProposal({ projectId, jobId, proposal, onDone }: { projectId: string; jobId: string; proposal: RegenerationProposal; onDone: () => Promise<void> }) {
+export function RegenerateProposal({ projectId, jobId, proposal, beforeDecide, onDone }: { projectId: string; jobId: string; proposal: RegenerationProposal; beforeDecide: () => Promise<void>; onDone: () => Promise<void> }) {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   async function decide(reject: boolean) {
     setBusy(true);
     setError(null);
     try {
+      // Save pending edits first so the proposal applies to the latest version.
+      await beforeDecide();
       await api(`/api/projects/${projectId}/regenerate/accept`, { method: "POST", json: { jobId, reject } });
       await onDone();
     } catch (e) {

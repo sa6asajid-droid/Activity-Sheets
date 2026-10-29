@@ -1,5 +1,5 @@
 "use client";
-import { useMemo, useState } from "react";
+import { useId, useMemo, useState } from "react";
 import type { Activity, AnswerKeyEntry, Diagram, Section, WorksheetDocument } from "@/lib/schema/document";
 import { DiagramSpecSchema } from "@/lib/schema/diagram";
 import { compileDiagram } from "@/lib/diagrams/compile";
@@ -12,16 +12,24 @@ type SetDoc = (u: (d: WorksheetDocument) => WorksheetDocument) => void;
 const lines = (s: string) => s.split("\n").map((x) => x.trim()).filter(Boolean);
 
 function T({ label, value, onChange, rows = 1, disabled, hint }: { label: string; value: string; onChange: (v: string) => void; rows?: number; disabled?: boolean; hint?: string }) {
+  const id = useId();
+  const hintId = hint ? `${id}-hint` : undefined;
   return (
-    <label className="text-sm font-semibold flex flex-col gap-1">
-      {label}
+    <div className="flex flex-col gap-1">
+      <label htmlFor={id} className="text-sm font-semibold">
+        {label}
+      </label>
       {rows > 1 ? (
-        <textarea className="field-input font-normal" rows={rows} value={value} disabled={disabled} onChange={(e) => onChange(e.target.value)} />
+        <textarea id={id} aria-describedby={hintId} className="field-input" rows={rows} value={value} disabled={disabled} onChange={(e) => onChange(e.target.value)} />
       ) : (
-        <input className="field-input font-normal" value={value} disabled={disabled} onChange={(e) => onChange(e.target.value)} />
+        <input id={id} aria-describedby={hintId} className="field-input" value={value} disabled={disabled} onChange={(e) => onChange(e.target.value)} />
       )}
-      {hint && <span className="text-xs font-normal text-muted">{hint}</span>}
-    </label>
+      {hint && (
+        <span id={hintId} className="text-xs text-muted">
+          {hint}
+        </span>
+      )}
+    </div>
   );
 }
 

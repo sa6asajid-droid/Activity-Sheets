@@ -129,7 +129,7 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
       {tab === "sources" && <SourcesPanel project={p} onChange={() => void load(false)} onStartPlan={async () => { await api(`/api/projects/${id}/plan`, { method: "POST", json: {} }); await load(); setTab("plan"); }} demoOnly={Boolean(status?.providers.demoOnly)} />}
       {tab === "edit" &&
         (docState.doc ? (
-          <Editor projectId={id} state={docState} regenerate={data.jobs.regenerate} reload={() => load(false)} canGenerate={!status?.providers.demoOnly} />
+          <Editor projectId={id} state={docState} regenerate={data.jobs.regenerate} reload={() => load(false)} reloadDocument={() => load(true)} canGenerate={!status?.providers.demoOnly} />
         ) : (
           <Notice>There is no worksheet yet. Review and approve the lesson plan first.</Notice>
         ))}
