@@ -242,3 +242,18 @@ export const RegenerateOut = z.object({
 export type RegenerateOutT = z.infer<typeof RegenerateOut>;
 
 export { Icon as LlmIcon };
+
+export const CurriculumOut = z.object({
+  items: z.array(
+    z.object({
+      /** Exact wording copied from the curriculum document. */
+      expectationQuote: z.string(),
+      /** Code exactly as printed in the document, or "" if none is printed beside it. */
+      code: z.string(),
+      objectiveIds: z.array(z.string()),
+      activityIds: z.array(z.string()),
+      coverageLimitations: z.string(),
+    }),
+  ),
+});
+export type CurriculumOutT = z.infer<typeof CurriculumOut>;

@@ -344,6 +344,18 @@ export const DiagramSchema = z.object({
   labelOverrides: z.record(z.string(), z.string().max(200)).default({}),
   /** Width as a fraction of the content column. */
   widthPct: z.number().min(30).max(100).default(100),
+  /**
+   * A reviewed image uploaded by the editor that replaces the drawn diagram.
+   * Pixel size is stored so layout can reserve space without the image bytes.
+   */
+  image: z
+    .object({
+      assetId: z.string().uuid(),
+      mime: z.enum(["image/png", "image/jpeg"]),
+      widthPx: z.number().int().min(1).max(20000),
+      heightPx: z.number().int().min(1).max(20000),
+    })
+    .optional(),
 });
 export type Diagram = z.infer<typeof DiagramSchema>;
 
@@ -401,6 +413,9 @@ export const CurriculumAlignmentSchema = z.object({
         objectiveIds: z.array(id),
         activityIds: z.array(id),
         coverageLimitations: shortText,
+        /** Set by code: the expectation (and code) were found verbatim in the stored curriculum document. */
+        verifiedInDocument: z.boolean().default(false),
+        documentId: z.string().max(80).optional(),
       }),
     )
     .default([]),

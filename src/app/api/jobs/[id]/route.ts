@@ -30,6 +30,7 @@ export async function GET(_req: Request, { params }: P) {
         clarification: j.status === "awaiting-input" && interp?.needsClarification ? interp.ambiguities : null,
         running: isJobRunning(j.id),
         providerMetadata: j.providerMetadata,
+        result: j.kind === "curriculum-map" && j.status === "succeeded" ? j.stages.curriculum : undefined,
       },
     });
   } catch (e) {

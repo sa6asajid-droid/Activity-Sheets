@@ -96,8 +96,9 @@ export interface MeasuredPage {
   clippedSections: string[];
 }
 
-export function exportHtml(doc: WorksheetDocument, variant: Variant, opts: { draftLabel?: string; revisionLabel?: string } = {}) {
-  return renderWorksheetHtml(doc, { variant, fontSrc: inlineFontSrc(), draftLabel: opts.draftLabel, revisionLabel: opts.revisionLabel });
+export function exportHtml(doc: WorksheetDocument, variant: Variant, opts: { draftLabel?: string; revisionLabel?: string; assets?: Record<string, string> } = {}) {
+  const assets = opts.assets;
+  return renderWorksheetHtml(doc, { variant, fontSrc: inlineFontSrc(), draftLabel: opts.draftLabel, revisionLabel: opts.revisionLabel, assetSrc: assets ? (id) => assets[id] : undefined });
 }
 
 export async function measureHtml(html: string): Promise<MeasuredPage[]> {

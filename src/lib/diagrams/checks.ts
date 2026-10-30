@@ -47,6 +47,10 @@ function textBoxes(graph: SceneGraph): Box[] {
 
 export function checkDiagram(diagram: Diagram): DiagramFinding[] {
   const out: DiagramFinding[] = [];
+  if (diagram.image) return checkImageFigure(diagram);
+  if (diagram.provenance.kind === "uploaded-image") {
+    return [{ code: "image-missing", severity: "blocking", message: `Figure "${diagram.caption || diagram.id}" is waiting for an uploaded image.`, elementIds: [diagram.id] }];
+  }
   const spec = diagram.spec;
   let graph: SceneGraph;
   try {
@@ -196,5 +200,15 @@ export function checkDiagram(diagram: Diagram): DiagramFinding[] {
   } else if (!diagram.lossIfRemoved.trim()) {
     out.push({ code: "diagram-purpose", severity: "warning", message: `State what understanding would be lost without "${diagram.caption || diagram.id}" — or mark it decorative.`, elementIds: [diagram.id] });
   }
+  return out;
+}
+
+/** Uploaded images cannot be checked geometrically; only their text alternatives and purpose. */
+function checkImageFigure(d: Diagram): DiagramFinding[] {
+  const out: DiagramFinding[] = [];
+  if (!d.altText.trim()) out.push({ code: "diagram-alt", severity: "blocking", message: `Image "${d.id}" has no alternative text.`, elementIds: [d.id] });
+  if (d.longDescription.trim().length < 40) out.push({ code: "diagram-long-description", severity: "warning", message: `Image "${d.caption || d.id}" needs a fuller text description; its content cannot be read by code.`, elementIds: [d.id] });
+  if (!d.lossIfRemoved.trim() && !d.decorative) out.push({ code: "diagram-purpose", severity: "warning", message: `State what understanding would be lost without "${d.caption || d.id}".`, elementIds: [d.id] });
+  out.push({ code: "image-labels-unchecked", severity: "info", message: `"${d.caption || d.id}" is an uploaded image: its labels, spelling and accuracy cannot be checked automatically.`, elementIds: [d.id] });
   return out;
 }

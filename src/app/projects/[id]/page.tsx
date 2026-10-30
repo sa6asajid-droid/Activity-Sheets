@@ -14,6 +14,7 @@ import { Editor } from "@/components/Editor";
 import { ReviewPanel } from "@/components/ReviewPanel";
 import { ExportPanel } from "@/components/ExportPanel";
 import { HistoryPanel } from "@/components/HistoryPanel";
+import { CurriculumPanel } from "@/components/CurriculumPanel";
 import { useStatus } from "@/components/ProviderBanner";
 
 export interface ProjectData {
@@ -31,6 +32,7 @@ const TABS = [
   { key: "sources", label: "Sources" },
   { key: "edit", label: "Edit" },
   { key: "review", label: "Review" },
+  { key: "curriculum", label: "Curriculum" },
   { key: "export", label: "Export" },
   { key: "history", label: "History" },
 ] as const;
@@ -113,7 +115,7 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
         ))}
       </nav>
 
-      {data.jobs.active && data.jobs.active.kind !== "regenerate-section" && (
+      {data.jobs.active && data.jobs.active.kind !== "regenerate-section" && data.jobs.active.kind !== "curriculum-map" && (
         <JobProgress
           jobId={data.jobs.active.id}
           onFinished={(status) => {
@@ -134,6 +136,7 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
           <Notice>There is no worksheet yet. Review and approve the lesson plan first.</Notice>
         ))}
       {tab === "review" && (docState.doc ? <ReviewPanel projectId={id} state={docState} decisions={data.decisions} onApproved={() => load()} /> : <Notice>Nothing to review yet.</Notice>)}
+      {tab === "curriculum" && (docState.doc ? <CurriculumPanel projectId={id} project={p} state={docState} onChange={() => load(false)} canGenerate={!status?.providers.demoOnly} /> : <Notice>Build the worksheet first.</Notice>)}
       {tab === "export" && (docState.doc ? <ExportPanel projectId={id} state={docState} data={data} reload={() => load(false)} /> : <Notice>Nothing to export yet.</Notice>)}
       {tab === "history" && <HistoryPanel projectId={id} data={data} onRestored={() => load()} />}
     </div>

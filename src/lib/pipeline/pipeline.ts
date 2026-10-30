@@ -15,8 +15,8 @@ import type { JobRow, ProjectSettings, Store } from "../db/store";
 import type { Claim, Diagram, Section, Source, WorksheetDocument } from "../schema/document";
 import { validateDocument } from "../schema/document";
 import { ProviderError, describeProviderError, type SearchProvider, type TextProvider, type Usage } from "../providers/types";
-import { InterpretOut, PlanOut, WriteOut, VisualsOut, CheckOut, RegenerateOut, type InterpretOutT, type PlanOutT, type WriteOutT, type VisualsOutT, type RegenerateOutT } from "./llm-schemas";
-import { SYSTEM_BASE, checkPrompt, interpretPrompt, planPrompt, regeneratePrompt, visualsPrompt, writePrompt } from "./prompts";
+import { InterpretOut, PlanOut, WriteOut, VisualsOut, CheckOut, RegenerateOut, CurriculumOut, type InterpretOutT, type PlanOutT, type WriteOutT, type VisualsOutT, type RegenerateOutT } from "./llm-schemas";
+import { SYSTEM_BASE, checkPrompt, curriculumPrompt, interpretPrompt, planPrompt, regeneratePrompt, visualsPrompt, writePrompt } from "./prompts";
 import { recommendStrategies } from "../pedagogy/strategies";
 import { audienceSummary } from "../defaults";
 import { assembleDocument } from "./assemble";
@@ -25,6 +25,7 @@ import { runQualityChecks } from "../quality/checks";
 import { renderWorksheetHtml } from "../render/worksheet";
 import { stripInline } from "../text";
 import { loadUserSourceTexts } from "../sources/user-sources";
+import { loadCurriculumTexts, verifyItems } from "../curriculum";
 
 export interface LayoutEngine {
   /** Measure sections in a real browser and assign pages. */
@@ -52,6 +53,7 @@ export const STAGE_LABELS: Record<string, string> = {
   layout: "Laying out pages",
   check: "Checking",
   regenerate: "Rewriting the selected section",
+  curriculum: "Matching against the curriculum document",
   done: "Ready for review",
 };
 
@@ -503,7 +505,42 @@ export function buildProposal(doc: WorksheetDocument, section: Section, out: Reg
   };
 }
 
+const stageCurriculum: StageFn = async (ctx) => {
+  const input = ctx.job.input as { docId: string; doc: WorksheetDocument };
+  const ref = (ctx.settings.curriculumDocs ?? []).find((d) => d.id === input.docId);
+  if (!ref) throw new NeedsInputError("Add a curriculum document first.");
+  const texts = await loadCurriculumTexts(ctx.settings);
+  const text = texts[ref.id];
+  if (!text) throw new NeedsInputError("The curriculum document could not be read. Add it again.");
+  const doc = input.doc;
+  const out = await callStructured(
+    ctx,
+    "curriculum",
+    getConfig().stages.check,
+    curriculumPrompt(ref.title, text, doc.learningPlan.objectives, doc.activities.map((a) => ({ id: a.id, title: a.title, objectiveIds: a.objectiveIds }))),
+    CurriculumOut,
+  );
+  const objectiveIds = new Set(doc.learningPlan.objectives.map((o) => o.id));
+  const activityIds = new Set(doc.activities.map((a) => a.id));
+  const verified = verifyItems(
+    out.items.slice(0, 20).map((i) => ({
+      expectation: i.expectationQuote.slice(0, 400),
+      code: i.code.trim() ? i.code.trim().slice(0, 40) : undefined,
+      objectiveIds: i.objectiveIds.filter((x) => objectiveIds.has(x)),
+      activityIds: i.activityIds.filter((x) => activityIds.has(x)),
+      coverageLimitations: i.coverageLimitations.slice(0, 400),
+      verifiedInDocument: false,
+      documentId: ref.id,
+    })),
+    { [ref.id]: text },
+  );
+  // Proposals whose wording is not in the document are discarded, not shown as alignment.
+  const kept = verified.filter((v) => v.verifiedInDocument);
+  return { items: kept, discarded: verified.length - kept.length, docId: ref.id };
+};
+
 const STAGE_FNS: Record<string, StageFn> = {
+  curriculum: stageCurriculum,
   interpret: stageInterpret,
   research: stageResearch,
   plan: stagePlan,
@@ -516,7 +553,7 @@ const STAGE_FNS: Record<string, StageFn> = {
 };
 
 export function stagesFor(kind: JobRow["kind"]): readonly string[] {
-  return kind === "plan" ? PLAN_STAGES : kind === "build" ? BUILD_STAGES : ["regenerate"];
+  return kind === "plan" ? PLAN_STAGES : kind === "build" ? BUILD_STAGES : kind === "curriculum-map" ? ["curriculum"] : ["regenerate"];
 }
 
 /**

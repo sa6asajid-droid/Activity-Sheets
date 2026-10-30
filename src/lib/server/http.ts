@@ -4,6 +4,8 @@ import { ServiceError } from "./services";
 import { ExportRefusedError } from "../export/exporter";
 import { SourceInputError } from "../sources/user-sources";
 import { FetchBlockedError } from "../security/safe-fetch";
+import { AssetInputError } from "../assets";
+import { CurriculumInputError } from "../curriculum";
 
 export function json(data: unknown, status = 200) {
   return NextResponse.json(data, { status, headers: { "Cache-Control": "no-store" } });
@@ -33,7 +35,7 @@ export function guard(req: Request): Response | null {
 export function handleError(e: unknown) {
   if (e instanceof ServiceError) return json({ error: e.message }, e.status);
   if (e instanceof ExportRefusedError) return json({ error: e.message, issues: e.issues }, 409);
-  if (e instanceof SourceInputError || e instanceof FetchBlockedError) return json({ error: e.message }, 400);
+  if (e instanceof SourceInputError || e instanceof FetchBlockedError || e instanceof AssetInputError || e instanceof CurriculumInputError) return json({ error: e.message }, 400);
   // Never echo internals (paths, keys) to the client.
   console.error("[curiosity-studio]", e instanceof Error ? e.message : e);
   return json({ error: "Something went wrong on the server. Your saved work is unaffected." }, 500);

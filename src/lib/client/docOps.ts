@@ -147,3 +147,30 @@ export function removeSection(doc: WorksheetDocument, id: string): WorksheetDocu
 export function studentPageCount(doc: WorksheetDocument) {
   return Math.max(1, ...doc.sections.filter((s) => !s.hidden).map((s) => s.page));
 }
+
+/** Add an empty figure section to be filled with an uploaded, reviewed image. */
+export function addImageFigure(doc: WorksheetDocument, afterId?: string): { doc: WorksheetDocument; sectionId: string; diagramId: string } {
+  const taken = allIds(doc);
+  const i = afterId ? doc.sections.findIndex((s) => s.id === afterId) : doc.sections.length - 1;
+  const page = doc.sections[i]?.page ?? 1;
+  const diagramId = uid("fig", taken);
+  const sectionId = uid("sec", taken);
+  const diagram: Diagram = {
+    id: diagramId,
+    teachingPurpose: "Uploaded figure",
+    lossIfRemoved: "",
+    // Placeholder frame shown until an image is uploaded; never presented as content.
+    spec: { type: "labelled-scene", width: 600, height: 300, primitives: [{ shape: "rect", x: 2, y: 2, w: 596, h: 296, rx: 6, fill: "none" }], callouts: [], legend: [] },
+    caption: "",
+    altText: "Image to be uploaded",
+    longDescription: "",
+    provenance: { kind: "uploaded-image", note: "Uploaded by the editor.", rights: "unknown" },
+    reviewStatus: "unreviewed",
+    decorative: false,
+    labelOverrides: {},
+    widthPct: 80,
+  };
+  const sections = [...doc.sections];
+  sections.splice(i + 1, 0, { id: sectionId, kind: "diagram", heading: "", body: "", terms: [], diagramId, page, optional: true, hidden: false, locked: false, keepWithNext: false, claimIds: [] });
+  return { doc: { ...doc, sections, diagrams: [...doc.diagrams, diagram] }, sectionId, diagramId };
+}

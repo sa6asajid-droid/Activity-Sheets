@@ -10,16 +10,18 @@
 import type { Activity, AnswerKeyEntry, Diagram, Section, WorksheetDocument } from "../schema/document";
 import { compileDiagram } from "../diagrams/compile";
 import { renderSvg } from "../diagrams/render";
-import { escapeHtml, renderBlocks, renderInline } from "../text";
+import { escapeHtml, renderBlocks, renderInline, stripInline } from "../text";
 import { fontFaceCss, worksheetCss } from "./styles";
 import { STRATEGY_LABELS } from "../pedagogy/strategies";
 
-export type Variant = "student" | "answer-key" | "teacher-notes" | "educator";
+export type Variant = "student" | "answer-key" | "teacher-notes" | "educator" | "review-cards";
 
 export interface RenderOptions {
   variant: Variant;
   /** How fonts are referenced: URL base for the preview, data URIs for export. */
   fontSrc: (file: string) => string;
+  /** URL (or data URI) for an uploaded image asset; omitted for layout measurement. */
+  assetSrc?: (assetId: string) => string | undefined;
   /** Adds click-to-select hooks for the editor. */
   interactive?: boolean;
   selectedSectionId?: string;
@@ -94,9 +96,24 @@ export function diagramSvg(doc: WorksheetDocument, d: Diagram, reveal: boolean, 
   });
 }
 
+/**
+ * Resolves uploaded image assets to URLs for the render in progress.
+ * Rendering is synchronous, so this is set and cleared around one call.
+ */
+let assetSrc: ((assetId: string) => string | undefined) | null = null;
+
+function figureArt(doc: WorksheetDocument, d: Diagram, reveal: boolean, prefix: string): string {
+  if (!d.image) return diagramSvg(doc, d, reveal, prefix);
+  const ratio = `${d.image.widthPx} / ${d.image.heightPx}`;
+  const src = assetSrc?.(d.image.assetId);
+  // Without the bytes (layout measurement), reserve the same space.
+  if (!src) return `<div role="img" aria-label="${esc(d.altText)}" style="aspect-ratio:${ratio};width:100%;border:0.3mm dashed #8a8a8a;display:flex;align-items:center;justify-content:center;font-size:9pt;color:#555">Image: ${esc(d.altText)}</div>`;
+  return `<img src="${esc(src)}" alt="${esc(d.altText)}" style="display:block;width:100%;height:auto;aspect-ratio:${ratio}">`;
+}
+
 function renderFigure(doc: WorksheetDocument, d: Diagram, figNo: number | undefined, reveal: boolean, prefix: string): string {
   return `<figure data-diagram="${esc(d.id)}">
-<div class="art" style="width:${d.widthPct}%">${diagramSvg(doc, d, reveal, prefix)}</div>
+<div class="art" style="width:${d.widthPct}%">${figureArt(doc, d, reveal, prefix)}</div>
 ${d.caption ? `<figcaption>${figNo ? `<b>Figure ${figNo}.</b> ` : ""}${renderInline(d.caption)}</figcaption>` : ""}
 </figure>`;
 }
@@ -245,6 +262,65 @@ export function studentPages(doc: WorksheetDocument, opts: RenderOptions): strin
   return pages;
 }
 
+// ---------------------------------------------------------------- review cards
+
+export interface ReviewCard {
+  day: number;
+  prompts: { prompt: string; answer: string; lines: number }[];
+}
+
+/**
+ * Build follow-up review cards from the document itself: the main question,
+ * recall items, key words and objectives. Each card draws a different mix
+ * from the pool so later cards revisit, rather than repeat, earlier ones.
+ * One worksheet's cards are a start on spaced review, not spaced practice by
+ * themselves; timing comes from the editable review plan.
+ */
+export function reviewCards(doc: WorksheetDocument): ReviewCard[] {
+  const days = doc.learningPlan.reviewPlan.suggestedReviewDays.length ? doc.learningPlan.reviewPlan.suggestedReviewDays : doc.learningPlan.reviewPlan.retrievalCard ? [2, 7] : [];
+  if (!days.length) return [];
+  const pool: ReviewCard["prompts"] = [{ prompt: `Without looking back: ${stripInline(doc.question)}`, answer: stripInline(doc.directAnswer), lines: 2 }];
+  for (const s of doc.sections.filter((x) => !x.hidden)) {
+    for (const t of s.terms.slice(0, 3)) pool.push({ prompt: `What does “${t.term}” mean?`, answer: stripInline(t.definition), lines: 2 });
+    const a = s.activityId ? doc.activities.find((x) => x.id === s.activityId) : undefined;
+    if (a && (a.type === "recall" || a.type === "explain-misconception" || a.type === "predict-explain")) {
+      const k = doc.answerKey.find((x) => x.id === a.answerKeyId);
+      // Short instructions carry the context a prompt needs ("Sam says…").
+      const context = a.instructions && stripInline(a.instructions).length <= 220 && a.type !== "recall" ? `${stripInline(a.instructions)} ` : "";
+      for (const it of a.items.slice(0, 2)) {
+        pool.push({ prompt: `${context}${stripInline(it.prompt)}`, answer: stripInline(k?.itemAnswers.find((x) => x.itemId === it.id)?.answer ?? k?.answer ?? ""), lines: 2 });
+      }
+    }
+  }
+  for (const o of doc.learningPlan.objectives) pool.push({ prompt: `Show you can still: ${stripInline(o.text).replace(/^./, (c) => c.toLowerCase())}.`, answer: `Look for: ${stripInline(o.evidence)}`, lines: 2 });
+  const per = Math.min(3, pool.length);
+  return [...days].sort((a, b) => a - b).map((day, i) => ({
+    day,
+    prompts: Array.from({ length: per }, (_, k) => pool[(i * 2 + k) % pool.length]).filter((p, k, arr) => arr.indexOf(p) === k),
+  }));
+}
+
+function reviewCardBlocks(doc: WorksheetDocument): string[] {
+  const cards = reviewCards(doc);
+  if (!cards.length) return ["<p>No review timing is set. Add review days in the document settings.</p>"];
+  return [
+    `<header class="titleblock"><p class="eyebrow">Review cards · cut along the dashed lines</p><h1 class="question" style="font-size:20pt">${renderInline(doc.question)}</h1></header>`,
+    ...cards.map(
+      (c, i) =>
+        `<section class="blk recall"><p class="cover">Day ${c.day} after the worksheet · card ${i + 1} of ${cards.length} · answer from memory, then check</p><ol>${c.prompts
+          .map((p) => `<li><div class="item"><div class="prompt"><span>${esc(p.prompt)}</span></div>${lines(p.lines)}</div></li>`)
+          .join("")}</ol></section>`,
+    ),
+  ];
+}
+
+function reviewCardAnswerBlocks(cards: ReviewCard[]): string[] {
+  return [
+    `<header class="titleblock"><p class="eyebrow">Review card answers</p></header>`,
+    ...cards.map((c, i) => `<section class="blk"><h2>Card ${i + 1} · day ${c.day}</h2><ol>${c.prompts.map((p) => `<li><b>${esc(p.prompt)}</b><br>${esc(p.answer)}</li>`).join("")}</ol></section>`),
+  ];
+}
+
 // ---------------------------------------------------------------- answer key
 
 function answerEntry(doc: WorksheetDocument, a: Activity, k: AnswerKeyEntry | undefined, num: number | undefined, page: number | undefined): string {
@@ -329,7 +405,7 @@ export function teacherNoteBlocks(doc: WorksheetDocument): string[] {
   b.push(`<section class="blk"><h2>Curriculum</h2>${
     cur.status === "verified-from-document"
       ? `<p>Mapped against <i>${esc(cur.documentTitle ?? "")}</i>${cur.documentVersion ? ` (${esc(cur.documentVersion)})` : ""}.</p><table><thead><tr><th>Expectation</th><th>Where</th><th>Limits</th></tr></thead><tbody>${cur.items
-          .map((i) => `<tr><td>${i.code ? `<b>${esc(i.code)}</b> ` : ""}${esc(i.expectation)}</td><td>${esc(i.location ?? "")}</td><td>${esc(i.coverageLimitations)}</td></tr>`)
+          .map((i) => `<tr><td>${i.code ? `<b>${esc(i.code)}</b> ` : ""}${esc(i.expectation)}</td><td>${esc(i.location ?? "")}</td><td>${esc(i.coverageLimitations)}${i.verifiedInDocument ? "" : " <b>(wording not found in the document)</b>"}</td></tr>`)
           .join("")}</tbody></table>`
       : cur.status === "suggested-unverified"
         ? `<p><b>Suggested topic alignment—not verified curriculum alignment.</b></p>${cur.items.length ? `<ul>${cur.items.map((i) => `<li>${esc(i.expectation)} — ${esc(i.coverageLimitations)}</li>`).join("")}</ul>` : ""}`
@@ -369,6 +445,15 @@ export function teacherNoteBlocks(doc: WorksheetDocument): string[] {
 }
 
 export function renderWorksheetHtml(doc: WorksheetDocument, opts: RenderOptions): string {
+  assetSrc = opts.assetSrc ?? null;
+  try {
+    return renderWorksheetHtmlInner(doc, opts);
+  } finally {
+    assetSrc = null;
+  }
+}
+
+function renderWorksheetHtmlInner(doc: WorksheetDocument, opts: RenderOptions): string {
   const css = fontFaceCss(opts.fontSrc) + worksheetCss(doc.layout);
   // Student pages are fixed (sections are pinned to pages and overflow is
   // reported). Answer keys and notes are "flow" pages that the in-page
@@ -382,6 +467,13 @@ export function renderWorksheetHtml(doc: WorksheetDocument, opts: RenderOptions)
   }
   if (opts.variant === "teacher-notes" || opts.variant === "educator") {
     pages.push(pageShell(doc, `<div class="key flow">${teacherNoteBlocks(doc).join("\n")}</div>`, opts, "Teacher notes", true));
+  }
+  if (opts.variant === "review-cards") {
+    pages.push(pageShell(doc, `<div class="flow">${reviewCardBlocks(doc).join("\n")}</div>`, opts, "Review cards", true));
+  }
+  if (opts.variant === "answer-key" || opts.variant === "educator") {
+    const cards = reviewCards(doc);
+    if (cards.length) pages.push(pageShell(doc, `<div class="key flow">${reviewCardAnswerBlocks(cards).join("\n")}</div>`, opts, "Review card answers", true));
   }
   const pagesHtml = pages.join("\n");
   const lang = esc(doc.audience.regionalConventions.spelling || "en");

@@ -175,6 +175,9 @@ export function runQualityChecks(doc: WorksheetDocument, inputs: CheckInputs = {
   if (cur.status === "suggested-unverified") {
     push({ code: "curriculum-unverified", category: "content-evidence", severity: "warning", affectedElementIds: [], message: "Suggested topic alignment—not verified curriculum alignment.", checkKind: "deterministic" });
   }
+  if (cur.status === "verified-from-document" && cur.items.some((i) => !i.verifiedInDocument)) {
+    push({ code: "curriculum-not-verified", category: "content-evidence", severity: "blocking", affectedElementIds: [], message: "Curriculum alignment is labelled verified, but at least one expectation was not found in the curriculum document.", suggestedFix: "Re-check the mapping against the document on the Curriculum tab.", checkKind: "deterministic" });
+  }
   if (cur.status === "verified-from-document" && cur.items.some((i) => !i.location)) {
     push({ code: "curriculum-location", category: "content-evidence", severity: "warning", affectedElementIds: [], message: "A curriculum mapping has no location in the source document.", checkKind: "deterministic" });
   }

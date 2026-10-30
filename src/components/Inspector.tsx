@@ -114,7 +114,7 @@ export function Inspector(props: { projectId: string; doc: WorksheetDocument; se
         )}
       </Card>
       {activity && <ActivityEditor key={activity.id} doc={doc} setDoc={setDoc} activity={activity} locked={locked} />}
-      {diagram && <DiagramEditor key={diagram.id} doc={doc} setDoc={setDoc} diagram={diagram} locked={locked} focusLabel={props.selectedLabel} />}
+      {diagram && <DiagramEditor key={diagram.id} projectId={props.projectId} doc={doc} setDoc={setDoc} diagram={diagram} locked={locked} focusLabel={props.selectedLabel} />}
       <RegenerateBox projectId={props.projectId} section={section} canGenerate={props.canGenerate} onDone={props.onRegenerated} />
     </div>
   );
@@ -239,7 +239,67 @@ function ActivityEditor({ doc, setDoc, activity: a, locked }: { doc: WorksheetDo
 
 // ---------------------------------------------------------------- diagram
 
-function DiagramEditor({ doc, setDoc, diagram: d, locked, focusLabel }: { doc: WorksheetDocument; setDoc: SetDoc; diagram: Diagram; locked: boolean; focusLabel: string | null }) {
+function ImageControls({ projectId, d, locked, ud }: { projectId: string; d: Diagram; locked: boolean; ud: (patch: Partial<Diagram>) => void }) {
+  const [rights, setRights] = useState<"owned" | "licensed" | "unknown">(d.provenance.rights === "generated" ? "unknown" : d.provenance.rights);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  async function upload(file: File) {
+    setBusy(true);
+    setError(null);
+    try {
+      const fd = new FormData();
+      fd.set("file", file);
+      fd.set("rights", rights);
+      const res = await fetch(`/api/projects/${projectId}/assets`, { method: "POST", body: fd });
+      const body = await res.json();
+      if (!res.ok) throw new Error(body.error ?? "Upload failed");
+      const a = body.asset as { id: string; mime: "image/png" | "image/jpeg"; width: number; height: number; filename: string };
+      ud({
+        image: { assetId: a.id, mime: a.mime, widthPx: a.width, heightPx: a.height },
+        provenance: { kind: "uploaded-image", note: `Uploaded by the editor (${a.filename}).`, rights },
+        reviewStatus: "unreviewed",
+      });
+    } catch (e) {
+      setError((e as Error).message);
+    } finally {
+      setBusy(false);
+    }
+  }
+  return (
+    <fieldset className="flex flex-col gap-1.5 border border-line rounded-md p-2">
+      <legend className="text-sm font-semibold px-1">Reviewed image</legend>
+      {d.image ? (
+        <p className="text-xs">
+          Using an uploaded {d.image.mime === "image/png" ? "PNG" : "JPEG"} ({d.image.widthPx}×{d.image.heightPx} px). Rights: {d.provenance.rights}. Its content cannot be checked automatically.
+        </p>
+      ) : (
+        <p className="text-xs text-muted">Replace the drawn diagram with a PNG or JPEG you have reviewed (for visuals the diagram engine cannot draw accurately).</p>
+      )}
+      <label className="text-sm flex flex-col gap-1">
+        Rights
+        <select className="field-input" value={rights} disabled={locked} onChange={(e) => setRights(e.target.value as typeof rights)}>
+          <option value="owned">We own it</option>
+          <option value="licensed">Licensed for this use</option>
+          <option value="unknown">Unknown — needs clearance</option>
+        </select>
+      </label>
+      <label className="text-sm flex flex-col gap-1">
+        {d.image ? "Replace image" : "Upload image"}
+        <input type="file" accept="image/png,image/jpeg" disabled={locked || busy} onChange={(e) => e.target.files?.[0] && void upload(e.target.files[0])} />
+      </label>
+      {d.image && (
+        <div>
+          <Button size="sm" variant="ghost" disabled={locked} onClick={() => ud({ image: undefined, provenance: { kind: "deterministic-svg", note: "Drawn from a validated specification by Curiosity Studio's diagram engine.", rights: "owned" } })}>
+            Remove image, use the drawn diagram
+          </Button>
+        </div>
+      )}
+      <ErrorText error={error} />
+    </fieldset>
+  );
+}
+
+function DiagramEditor({ projectId, doc, setDoc, diagram: d, locked, focusLabel }: { projectId: string; doc: WorksheetDocument; setDoc: SetDoc; diagram: Diagram; locked: boolean; focusLabel: string | null }) {
   const ud = (patch: Partial<Diagram>) => setDoc((x) => ops.updateDiagram(x, d.id, patch));
   const labels = useMemo(() => {
     const g = compileDiagram(d.spec, {});
@@ -266,7 +326,8 @@ function DiagramEditor({ doc, setDoc, diagram: d, locked, focusLabel }: { doc: W
         <input type="range" min={30} max={100} step={5} value={d.widthPct} disabled={locked} onChange={(e) => ud({ widthPct: Number(e.target.value) })} />
       </label>
       <Check label="Decorative only (optional, carries no information)" checked={d.decorative} disabled={locked} onChange={(v) => ud({ decorative: v })} />
-      {labels.length > 0 && (
+      <ImageControls projectId={projectId} d={d} locked={locked} ud={ud} />
+      {!d.image && labels.length > 0 && (
         <fieldset className="flex flex-col gap-1">
           <legend className="text-sm font-semibold">Labels</legend>
           {labels.map((l) => (
@@ -288,7 +349,7 @@ function DiagramEditor({ doc, setDoc, diagram: d, locked, focusLabel }: { doc: W
           ))}
         </fieldset>
       )}
-      <details>
+      <details hidden={Boolean(d.image)}>
         <summary className="text-sm font-semibold cursor-pointer">Edit the diagram data</summary>
         <p className="text-xs text-muted my-1">The drawing is computed from this data, so changing a value (an elevation, a bar value, a coordinate) redraws it accurately. Invalid data is rejected, never guessed.</p>
         <textarea className="field-input font-mono text-xs" rows={12} value={specText} disabled={locked} onChange={(e) => setSpecText(e.target.value)} />
@@ -377,6 +438,31 @@ function RegenerateBox({ projectId, section, canGenerate, onDone }: { projectId:
 
 // ---------------------------------------------------------------- document
 
+/** Edited as free text and committed on blur, so commas can be typed. */
+function ReviewDays({ doc, setDoc }: { doc: WorksheetDocument; setDoc: SetDoc }) {
+  const current = doc.learningPlan.reviewPlan.suggestedReviewDays.join(", ");
+  const [text, setText] = useState(current);
+  const id = useId();
+  const commit = () => {
+    const days = [...new Set(text.split(",").map((x) => Math.round(Number(x.trim()))).filter((n) => Number.isFinite(n) && n >= 1 && n <= 120))].sort((a, b) => a - b).slice(0, 5);
+    setText(days.join(", "));
+    if (days.join() !== doc.learningPlan.reviewPlan.suggestedReviewDays.join()) {
+      setDoc((d) => ({ ...d, learningPlan: { ...d.learningPlan, reviewPlan: { ...d.learningPlan.reviewPlan, suggestedReviewDays: days } } }));
+    }
+  };
+  return (
+    <div className="flex flex-col gap-1">
+      <label htmlFor={id} className="text-sm font-semibold">
+        Review days after the worksheet
+      </label>
+      <input id={id} aria-describedby={`${id}-hint`} className="field-input" value={text} onChange={(e) => setText(e.target.value)} onBlur={commit} placeholder="e.g. 2, 7, 21" />
+      <span id={`${id}-hint`} className="text-xs text-muted">
+        Comma-separated, up to five. Used for printable review cards. One worksheet alone is not spaced practice; plan the follow-ups.
+      </span>
+    </div>
+  );
+}
+
 function DocumentSettings({ doc, setDoc }: { doc: WorksheetDocument; setDoc: SetDoc }) {
   const L = doc.layout;
   const ul = (patch: Partial<WorksheetDocument["layout"]>) => setDoc((d) => ({ ...d, layout: { ...d.layout, ...patch } }));
@@ -399,6 +485,7 @@ function DocumentSettings({ doc, setDoc }: { doc: WorksheetDocument; setDoc: Set
         <T label="Title (for files and lists)" value={doc.title} onChange={(v) => setDoc((d) => ({ ...d, title: v }))} />
         <T label="Main question (printed as the page title)" value={doc.question} onChange={(v) => setDoc((d) => ({ ...d, question: v }))} />
         <T label="Subject line" value={doc.subject} onChange={(v) => setDoc((d) => ({ ...d, subject: v }))} />
+        <ReviewDays doc={doc} setDoc={setDoc} />
         <label className="text-sm font-semibold flex flex-col gap-1">
           Target student pages
           <input type="number" min={1} max={20} className="field-input !w-24 font-normal" value={doc.format.targetStudentPages} onChange={(e) => setDoc((d) => ({ ...d, format: { ...d.format, kind: "custom", targetStudentPages: Math.max(1, Number(e.target.value)) } }))} />

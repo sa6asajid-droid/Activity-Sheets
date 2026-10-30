@@ -12,6 +12,7 @@ const KINDS = [
   { kind: "answer-key-pdf", label: "Answer key PDF", note: "Separate answer key." },
   { kind: "teacher-notes-pdf", label: "Teacher notes PDF", note: "Rationale, sources, claims and diagram descriptions." },
   { kind: "educator-pdf", label: "Combined educator PDF", note: "Student pages + answer key + teacher notes." },
+  { kind: "review-cards-pdf", label: "Review cards PDF", note: "Cut-out recall cards for the review days you set (answers are in the answer key)." },
   { kind: "student-html", label: "Student HTML", note: "Structured, self-contained HTML." },
   { kind: "educator-html", label: "Educator HTML", note: "Everything, as HTML." },
   { kind: "plain-text", label: "Plain text", note: "Student text with diagram descriptions." },

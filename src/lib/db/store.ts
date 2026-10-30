@@ -56,6 +56,18 @@ export interface ProjectSettings {
   clarifications: { question: string; answer: string }[];
   /** Sources supplied by the editor (pasted text, uploaded files, fetched URLs). Full text lives in storage. */
   userSources: UserSourceRef[];
+  /** Curriculum documents supplied by the editor (full text lives in storage). */
+  curriculumDocs?: CurriculumDocRef[];
+}
+
+export interface CurriculumDocRef {
+  id: string;
+  title: string;
+  jurisdiction: string;
+  version: string;
+  storageKey: string;
+  addedAt: string;
+  chars: number;
 }
 
 export interface UserSourceRef {
@@ -82,7 +94,7 @@ export interface RevisionRow {
   doc: WorksheetDocument;
 }
 
-export type JobKind = "plan" | "build" | "regenerate-section";
+export type JobKind = "plan" | "build" | "regenerate-section" | "curriculum-map";
 export type JobStatus = "queued" | "running" | "awaiting-input" | "awaiting-budget" | "succeeded" | "failed" | "cancelled";
 
 export interface JobRow {

@@ -117,7 +117,7 @@ export function assembleDocument(input: AssembleInput, report: ConvertReport): W
       misconceptionNotes: tn.misconceptionNotes,
       reviewSuggestions: tn.reviewSuggestions,
       curriculum: plan.curriculumSuggestions.length
-        ? { status: "suggested-unverified", items: plan.curriculumSuggestions.map((c) => ({ expectation: c.expectation, objectiveIds: [], activityIds: [], coverageLimitations: c.coverageLimitations })) }
+        ? { status: "suggested-unverified", items: plan.curriculumSuggestions.map((c) => ({ expectation: c.expectation, objectiveIds: [], activityIds: [], coverageLimitations: c.coverageLimitations, verifiedInDocument: false })) }
         : { status: "none", items: [] },
       sensitivity: { level: tn.sensitivityLevel, notes: tn.sensitivityNotes, adultSupervision: tn.adultSupervision },
     },

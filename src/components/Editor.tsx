@@ -64,6 +64,7 @@ export function Editor({ projectId, state, regenerate, reload, reloadDocument, c
         renderWorksheetHtml(doc, {
           variant,
           fontSrc: (f) => `${window.location.origin}/fonts/${f}`,
+          assetSrc: (id) => `${window.location.origin}/api/assets/${id}`,
           interactive: true,
           selectedSectionId: selected ?? undefined,
           initialScroll: scrollY.current,
@@ -237,8 +238,19 @@ export function Editor({ projectId, state, regenerate, reload, reloadDocument, c
               className="field-input !py-1"
               value=""
               onChange={(e) => {
-                if (!e.target.value) return;
-                setDoc((d) => ops.addSection(d, e.target.value as never, selected ?? undefined));
+                const v = e.target.value;
+                if (!v) return;
+                if (v === "image-figure") {
+                  let newId = "";
+                  setDoc((d) => {
+                    const r = ops.addImageFigure(d, selected ?? undefined);
+                    newId = r.sectionId;
+                    return r.doc;
+                  });
+                  setTimeout(() => setSelected(newId), 0);
+                  return;
+                }
+                setDoc((d) => ops.addSection(d, v as never, selected ?? undefined));
               }}
             >
               <option value="">Choose…</option>
@@ -249,6 +261,7 @@ export function Editor({ projectId, state, regenerate, reload, reloadDocument, c
                     {v}
                   </option>
                 ))}
+              <option value="image-figure">Figure from an uploaded image</option>
             </select>
           </label>
         </nav>

@@ -182,6 +182,17 @@ export class MockTextProvider implements TextProvider {
       }
       case "check":
         return { claimAssessments: [], critique: [{ category: "teaching-assessment", severity: "info", message: "[MOCK] Critique placeholder.", affectedElementIds: [], suggestedFix: "" }] } satisfies CheckOutT;
+      case "curriculum": {
+        // Quote the first sentence of the document so verification succeeds, plus one invented line that must be discarded.
+        const docText = prompt.match(/<curriculum_document[^>]*>\n([\s\S]*?)\n<\/curriculum_document>/)?.[1] ?? "";
+        const firstLine = docText.split("\n").map((l) => l.trim()).find((l) => l.length > 30) ?? "";
+        return {
+          items: [
+            { expectationQuote: firstLine, code: "", objectiveIds: ["obj-1"], activityIds: [], coverageLimitations: "[MOCK] Partial coverage." },
+            { expectationQuote: "[MOCK] An expectation that is not in the document", code: "Z9.9", objectiveIds: ["obj-1"], activityIds: [], coverageLimitations: "" },
+          ],
+        };
+      }
       case "regenerate": {
         const sec = prompt.match(/"section":\{"id":"([^"]+)","kind":"([^"]+)"/);
         const kind = (sec?.[2] ?? "note") as RegenerateOutT["section"]["kind"];

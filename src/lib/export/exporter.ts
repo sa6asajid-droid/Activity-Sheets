@@ -17,6 +17,7 @@ import { activityNumbers, diagramSvg, figureNumbers } from "../render/worksheet"
 import { stripInline, escapeHtml } from "../text";
 import { renderWorksheetHtml } from "../render/worksheet";
 import { inlineFontSrc } from "../render/browser";
+import { loadDocAssets } from "../assets";
 import { fontFaceCss, worksheetCss } from "../render/styles";
 
 export const EXPORT_KINDS = [
@@ -30,6 +31,7 @@ export const EXPORT_KINDS = [
   "plain-text",
   "diagram-svg",
   "page-png",
+  "review-cards-pdf",
 ] as const;
 export type ExportKind = (typeof EXPORT_KINDS)[number];
 
@@ -119,13 +121,19 @@ export async function exportProject(store: Store, projectId: string, opts: Expor
   const v = validateDocument(doc);
   if (!v.ok) throw new ExportRefusedError(`The document is invalid and cannot be exported: ${v.errors.slice(0, 3).join("; ")}`);
   const approved = revision!.kind === "approved";
+  // Uploaded images must be present; a missing asset is never silently replaced.
+  const assets = await loadDocAssets(store, projectId, doc);
+  const usedImages = doc.diagrams.filter((d) => d.image && (doc.sections.some((s) => !s.hidden && s.diagramId === d.id) || doc.activities.some((a) => a.diagramId === d.id)));
+  const missing = usedImages.filter((d) => !assets[d.image!.assetId]);
+  if (missing.length) throw new ExportRefusedError(`Missing image file for ${missing.map((d) => d.caption || d.id).join(", ")}. Upload it again or switch back to the drawn diagram.`);
   const studentHtml = exportHtml(doc, "student");
   const measured = opts.kind.endsWith("pdf") || opts.kind === "page-png" ? await measureHtml(exportHtml(doc, "educator")) : undefined;
   const report = runQualityChecks(doc, { measuredPages: measured, studentHtml, previous: doc.qualityReport?.issues });
   const blocking = blockingIssues(report);
   // A student export that contains teacher answers is never allowed, draft or not.
-  const studentKinds: ExportKind[] = ["student-pdf", "student-html", "plain-text", "page-png"];
-  if (studentKinds.includes(opts.kind) && findAnswerLeaks(doc, studentHtml).length) {
+  const studentKinds: ExportKind[] = ["student-pdf", "student-html", "plain-text", "page-png", "review-cards-pdf"];
+  const checkedHtml = opts.kind === "review-cards-pdf" ? exportHtml(doc, "review-cards") : studentHtml;
+  if (studentKinds.includes(opts.kind) && findAnswerLeaks(doc, checkedHtml).length) {
     throw new ExportRefusedError("Student output would contain answer-key or teacher text. Export blocked.", blocking);
   }
   if (blocking.length && !opts.allowDraft && !["project-json"].includes(opts.kind)) {
@@ -141,9 +149,11 @@ export async function exportProject(store: Store, projectId: string, opts: Expor
     case "student-pdf":
     case "answer-key-pdf":
     case "teacher-notes-pdf":
-    case "educator-pdf": {
-      const variant = opts.kind === "student-pdf" ? "student" : opts.kind === "answer-key-pdf" ? "answer-key" : opts.kind === "teacher-notes-pdf" ? "teacher-notes" : "educator";
-      const html = exportHtml(doc, variant, { draftLabel, revisionLabel });
+    case "educator-pdf":
+    case "review-cards-pdf": {
+      const variant =
+        opts.kind === "student-pdf" ? "student" : opts.kind === "answer-key-pdf" ? "answer-key" : opts.kind === "teacher-notes-pdf" ? "teacher-notes" : opts.kind === "review-cards-pdf" ? "review-cards" : "educator";
+      const html = exportHtml(doc, variant, { draftLabel, revisionLabel, assets });
       const { pdf, pages } = await renderPdf(html, doc);
       const clipped = pages.filter((p) => p.overflowPx > 1);
       if (clipped.length && !opts.allowDraft) throw new ExportRefusedError(`Content is clipped on page(s) ${clipped.map((p) => p.page).join(", ")}.`);
@@ -157,7 +167,7 @@ export async function exportProject(store: Store, projectId: string, opts: Expor
       break;
     case "student-html":
     case "educator-html":
-      bytes = Buffer.from(exportHtml(doc, opts.kind === "student-html" ? "student" : "educator", { draftLabel, revisionLabel }));
+      bytes = Buffer.from(exportHtml(doc, opts.kind === "student-html" ? "student" : "educator", { draftLabel, revisionLabel, assets }));
       filename = `${base}-${opts.kind === "student-html" ? "student" : "educator"}.html`;
       break;
     case "plain-text":
@@ -167,12 +177,13 @@ export async function exportProject(store: Store, projectId: string, opts: Expor
     case "diagram-svg": {
       const d = doc.diagrams.find((x) => x.id === opts.diagramId);
       if (!d) throw new ExportRefusedError("Diagram not found.");
+      if (d.image) throw new ExportRefusedError("This figure is an uploaded image, not a drawn diagram; download the original image instead.");
       bytes = Buffer.from(diagramSvg(doc, d, false, `svg-${d.id}`));
       filename = `${base}-${d.id}.svg`;
       break;
     }
     case "page-png":
-      bytes = await renderPng(exportHtml(doc, "educator", { draftLabel, revisionLabel }), opts.pageNumber ?? 1);
+      bytes = await renderPng(exportHtml(doc, "educator", { draftLabel, revisionLabel, assets }), opts.pageNumber ?? 1);
       filename = `${base}-page-${opts.pageNumber ?? 1}.png`;
       break;
   }
@@ -235,7 +246,7 @@ export async function compileWorkbook(store: Store, workbookId: string, opts: { 
   const wb = store.getWorkbook(workbookId);
   if (!wb) throw new ExportRefusedError("Workbook not found.");
   const notes: string[] = [];
-  const docs: { doc: WorksheetDocument; approved: boolean }[] = [];
+  const docs: { doc: WorksheetDocument; approved: boolean; projectId: string }[] = [];
   for (const pid of wb.projectIds) {
     const approved = store.latestApproved(pid);
     const draft = store.getDraft(pid);
@@ -248,7 +259,7 @@ export async function compileWorkbook(store: Store, workbookId: string, opts: { 
       if (!opts.allowDraft) throw new ExportRefusedError(`"${doc.question}" has no approved revision.`);
       notes.push(`"${doc.question}" is included as an unapproved draft.`);
     }
-    docs.push({ doc, approved: Boolean(approved) });
+    docs.push({ doc, approved: Boolean(approved), projectId: pid });
   }
   if (!docs.length) throw new ExportRefusedError("The workbook has no worksheets.");
   const out = await PDFDocument.create();
@@ -258,8 +269,9 @@ export async function compileWorkbook(store: Store, workbookId: string, opts: { 
     pages.forEach((p) => out.addPage(p));
   };
   await append((await renderPdf(workbookFrontMatter(wb.title, docs.map((d) => d.doc), wb.settings.cumulativeReview), docs[0].doc)).pdf);
-  for (const { doc, approved } of docs) {
-    await append((await renderPdf(exportHtml(doc, "student", { revisionLabel: approved ? "Approved" : "Draft" }), doc)).pdf);
+  for (const { doc, approved, projectId } of docs) {
+    const assets = await loadDocAssets(store, projectId, doc);
+    await append((await renderPdf(exportHtml(doc, "student", { revisionLabel: approved ? "Approved" : "Draft", assets }), doc)).pdf);
   }
   if (wb.settings.includeAnswerKey) {
     for (const { doc, approved } of docs) await append((await renderPdf(exportHtml(doc, "answer-key", { draftLabel: approved ? undefined : "DRAFT — NOT APPROVED" }), doc)).pdf);
